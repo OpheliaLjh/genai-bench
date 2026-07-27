@@ -6,7 +6,7 @@ import json
 import os
 import time
 from collections.abc import Callable, Iterator
-from typing import Any
+from typing import Any, cast
 
 import httpx
 import requests
@@ -122,8 +122,12 @@ class OCIOpenAIUser(OpenAIUser):
         if configured_chunk_size <= 0:
             raise ValueError("OCI_OPENAI_STREAM_CHUNK_SIZE must be a positive integer")
 
-        original_iter_lines = response.iter_lines
-        response._genai_bench_token_event_count = 0
+        response_state = cast(Any, response)
+        original_iter_lines = cast(
+            Callable[..., Iterator[bytes | str]],
+            response.iter_lines,
+        )
+        response_state._genai_bench_token_event_count = 0
 
         def iter_lines(
             chunk_size: int | None = None,
@@ -139,10 +143,10 @@ class OCIOpenAIUser(OpenAIUser):
                 delimiter=delimiter,
             ):
                 if cls._is_token_bearing_sse_line(line):
-                    response._genai_bench_token_event_count += 1
+                    response_state._genai_bench_token_event_count += 1
                 yield line
 
-        response.iter_lines = iter_lines
+        response_state.iter_lines = iter_lines
 
     @staticmethod
     def _reject_unreliable_stream_timing(
